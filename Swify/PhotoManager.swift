@@ -55,7 +55,6 @@ class PhotoManager: ObservableObject {
         
         let fetchOptions = PHFetchOptions()
         fetchOptions.includeHiddenAssets = false
-        fetchOptions.includeAllBurstPhotos = false
         
         // Sortierung nach Aufnahmedatum (neueste zuerst)
         fetchOptions.sortDescriptors = [
