@@ -17,150 +17,15 @@ struct PhotoDetailView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                // Background
                 Color.black.ignoresSafeArea()
                 
                 if !photoManager.filteredPhotos.isEmpty && currentIndex < photoManager.filteredPhotos.count {
-                    PhotoCard(
-                        asset: photoManager.filteredPhotos[currentIndex],
-                        size: geometry.size
-                    )
-                    .offset(dragOffset)
-                    .scaleEffect(1 - abs(dragOffset.width) / 1000 * 0.1)
-                    .rotationEffect(.degrees(Double(dragOffset.width / 20)))
-                    .gesture(
-                        DragGesture()
-                            .onChanged { value in
-                                dragOffset = value.translation
-                            }
-                            .onEnded { value in
-                                let threshold: CGFloat = 150
-                                
-                                if abs(value.translation.x) > threshold {
-                                    if value.translation.x > 0 {
-                                        // Swipe right - Keep/Favorite
-                                        handleKeepAction()
-                                    } else {
-                                        // Swipe left - Delete
-                                        handleDeleteAction()
-                                    }
-                                } else {
-                                    // Return to center
-                                    withAnimation(.spring()) {
-                                        dragOffset = .zero
-                                    }
-                                }
-                            }
-                    )
-                    
-                    // Overlay indicators
-                    HStack {
-                        // Delete indicator (left)
-                        if dragOffset.width < -50 {
-                            VStack {
-                                Image(systemName: "trash.fill")
-                                    .font(.title)
-                                    .foregroundColor(.white)
-                                Text("Löschen")
-                                    .font(.caption)
-                                    .foregroundColor(.white)
-                            }
-                            .padding()
-                            .background(Color.red.opacity(0.8))
-                            .cornerRadius(12)
-                            .scaleEffect(min(abs(dragOffset.width) / 150, 1.0))
-                        }
-                        
-                        Spacer()
-                        
-                        // Keep/Favorite indicator (right)
-                        if dragOffset.width > 50 {
-                            VStack {
-                                Image(systemName: "heart.fill")
-                                    .font(.title)
-                                    .foregroundColor(.white)
-                                Text("Behalten")
-                                    .font(.caption)
-                                    .foregroundColor(.white)
-                            }
-                            .padding()
-                            .background(Color.green.opacity(0.8))
-                            .cornerRadius(12)
-                            .scaleEffect(min(dragOffset.width / 150, 1.0))
-                        }
-                    }
-                    .padding(.horizontal, 30)
-                    .allowsHitTesting(false)
+                    mainPhotoView(geometry: geometry)
+                    swipeOverlayView
                 }
                 
-                // Action feedback
-                if showingActionFeedback {
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Text(lastActionText)
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .padding()
-                                .background(lastActionColor.opacity(0.9))
-                                .cornerRadius(12)
-                            Spacer()
-                        }
-                        .padding(.horizontal)
-                        .padding(.bottom, 100)
-                    }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-                
-                // Bottom controls
-                VStack {
-                    Spacer()
-                    
-                    HStack(spacing: 30) {
-                        // Undo button
-                        Button {
-                            undoLastAction()
-                        } label: {
-                            Image(systemName: "arrow.uturn.backward")
-                                .font(.title2)
-                                .foregroundColor(.white)
-                                .frame(width: 50, height: 50)
-                                .background(Color.gray.opacity(0.3))
-                                .clipShape(Circle())
-                        }
-                        .disabled(actionHistory.isEmpty)
-                        .opacity(actionHistory.isEmpty ? 0.5 : 1.0)
-                        
-                        Spacer()
-                        
-                        // Progress indicator
-                        VStack {
-                            Text("\(currentIndex + 1) / \(photoManager.filteredPhotos.count)")
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.8))
-                            
-                            ProgressView(value: Double(currentIndex + 1), total: Double(photoManager.filteredPhotos.count))
-                                .progressViewStyle(LinearProgressViewStyle(tint: .white))
-                                .frame(width: 100)
-                        }
-                        
-                        Spacer()
-                        
-                        // Info button
-                        Button {
-                            // Show photo info
-                        } label: {
-                            Image(systemName: "info.circle")
-                                .font(.title2)
-                                .foregroundColor(.white)
-                                .frame(width: 50, height: 50)
-                                .background(Color.gray.opacity(0.3))
-                                .clipShape(Circle())
-                        }
-                    }
-                    .padding(.horizontal, 30)
-                    .padding(.bottom, 50)
-                }
+                actionFeedbackView
+                bottomControlsView
             }
         }
         .onAppear {
@@ -169,6 +34,161 @@ struct PhotoDetailView: View {
         }
         .onChange(of: currentIndex) { newIndex in
             photoManager.preloadImages(around: newIndex)
+        }
+    }
+    
+    private func mainPhotoView(geometry: GeometryProxy) -> some View {
+        PhotoCard(
+            asset: photoManager.filteredPhotos[currentIndex],
+            size: geometry.size
+        )
+        .offset(dragOffset)
+        .scaleEffect(1 - abs(dragOffset.width) / 1000 * 0.1)
+        .rotationEffect(.degrees(Double(dragOffset.width / 20)))
+        .gesture(
+            DragGesture()
+                .onChanged { value in
+                    dragOffset = value.translation
+                }
+                .onEnded { value in
+                    let threshold: CGFloat = 150
+                    
+                    if abs(value.translation.x) > threshold {
+                        if value.translation.x > 0 {
+                            handleKeepAction()
+                        } else {
+                            handleDeleteAction()
+                        }
+                    } else {
+                        withAnimation(.spring()) {
+                            dragOffset = .zero
+                        }
+                    }
+                }
+        )
+    }
+    
+    private var swipeOverlayView: some View {
+        HStack {
+            if dragOffset.width < -50 {
+                deleteIndicatorView
+            }
+            
+            Spacer()
+            
+            if dragOffset.width > 50 {
+                keepIndicatorView
+            }
+        }
+        .padding(.horizontal, 30)
+        .allowsHitTesting(false)
+    }
+    
+    private var deleteIndicatorView: some View {
+        VStack {
+            Image(systemName: "trash.fill")
+                .font(.title)
+                .foregroundColor(.white)
+            Text("Löschen")
+                .font(.caption)
+                .foregroundColor(.white)
+        }
+        .padding()
+        .background(Color.red.opacity(0.8))
+        .cornerRadius(12)
+        .scaleEffect(min(abs(dragOffset.width) / 150, 1.0))
+    }
+    
+    private var keepIndicatorView: some View {
+        VStack {
+            Image(systemName: "heart.fill")
+                .font(.title)
+                .foregroundColor(.white)
+            Text("Behalten")
+                .font(.caption)
+                .foregroundColor(.white)
+        }
+        .padding()
+        .background(Color.green.opacity(0.8))
+        .cornerRadius(12)
+        .scaleEffect(min(dragOffset.width / 150, 1.0))
+    }
+    
+    private var actionFeedbackView: some View {
+        Group {
+            if showingActionFeedback {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Text(lastActionText)
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .padding()
+                            .background(lastActionColor.opacity(0.9))
+                            .cornerRadius(12)
+                        Spacer()
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 100)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+    }
+    
+    private var bottomControlsView: some View {
+        VStack {
+            Spacer()
+            
+            HStack(spacing: 30) {
+                undoButton
+                Spacer()
+                progressIndicator
+                Spacer()
+                infoButton
+            }
+            .padding(.horizontal, 30)
+            .padding(.bottom, 50)
+        }
+    }
+    
+    private var undoButton: some View {
+        Button {
+            undoLastAction()
+        } label: {
+            Image(systemName: "arrow.uturn.backward")
+                .font(.title2)
+                .foregroundColor(.white)
+                .frame(width: 50, height: 50)
+                .background(Color.gray.opacity(0.3))
+                .clipShape(Circle())
+        }
+        .disabled(actionHistory.isEmpty)
+        .opacity(actionHistory.isEmpty ? 0.5 : 1.0)
+    }
+    
+    private var progressIndicator: some View {
+        VStack {
+            Text("\(currentIndex + 1) / \(photoManager.filteredPhotos.count)")
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.8))
+            
+            ProgressView(value: Double(currentIndex + 1), total: Double(photoManager.filteredPhotos.count))
+                .progressViewStyle(LinearProgressViewStyle(tint: .white))
+                .frame(width: 100)
+        }
+    }
+    
+    private var infoButton: some View {
+        Button {
+            // Show photo info
+        } label: {
+            Image(systemName: "info.circle")
+                .font(.title2)
+                .foregroundColor(.white)
+                .frame(width: 50, height: 50)
+                .background(Color.gray.opacity(0.3))
+                .clipShape(Circle())
         }
     }
     
